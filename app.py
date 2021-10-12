@@ -1,9 +1,13 @@
 from flask import Flask, request, jsonify, render_template ,make_response
 import numpy as np
 import requests
+from datetime import datetime
+from datetime import date
 import csv
 import pandas as pd
 import os
+from bs4 import BeautifulSoup
+from IPython.display import HTML
 app = Flask(__name__)
 @app.route('/')
 def home():
@@ -13,14 +17,20 @@ def weather():
     
     if request.method == "POST":
         city_name = request.form.get("cityname")
-        
+        today = date.today()
+        starting_date= request.form.get("Startdate")
+        Ending_date = request.form.get("Enddate")
+        start_date=datetime.strptime(starting_date, '%d/%m/%Y').date()
+        End_date=datetime.strptime(Ending_date, '%d/%m/%Y').date()
+        del_diff=abs(today-start_date).days
+        delta = (abs(start_date - End_date).days)
        
         URL="forecasts/latest"
         url="https://www.weather-forecast.com/locations/"
         
         req = requests.get(f'{url}{city_name}/{URL}')
         
-        from bs4 import BeautifulSoup
+        
         soup = BeautifulSoup(req.content, 'lxml')
         period_day = soup.findAll("div" , {"class":"b-forecast__table-days-name"})
         period_date= soup.findAll("div" , {"class":"b-forecast__table-days-date"})
@@ -50,11 +60,13 @@ def weather():
 
         weather_humidity = soup.find("tr" , {"class":"b-forecast__table-humidity js-humidity"})
         weather_humidity_val = weather_humidity.findAll("span" , {"class":"b-forecast__table-value"})
-        
+        '''
+        weather_UV=soup.find('tr',{'class':"b-forecast__table-uv js-uv"})
+        weather_UV_val=weather_UV.findAll('tr',{'class':"b-forecast__table-value"})'''
     
     df = pd.DataFrame()
     with open( city_name + '.csv',mode = 'w') as csv_file:
-        fieldnames = ['Days_Name',
+        attributes = ['Days_Name',
                   'Date_Name',
                   'Max_Temp\n[AM,PM,Night]',
                   'Min_Temp\n[AM,PM,Night]',
@@ -62,12 +74,14 @@ def weather():
                   'Rain\n[AM,PM,Night]',
                   'Chill\n[AM,PM,Night]',
                   'Humidity\n[AM,PM,Night]',
+                  'UV\n[AM,PM,Night]'
         ]
-        writer = csv.DictWriter(csv_file, fieldnames = fieldnames)
+        writer = csv.DictWriter(csv_file, fieldnames = attributes)
         writer.writeheader()
-        for (i,j) in zip(range(13),range(0,34,3)):
+        for (i,j) in zip(range(del_diff,(delta+del_diff)+1,1),range(0,36,3)):
             #print(j)
             a={
+            'city':city_name,
             'Days_Name':str(period_day[i].text),
             'Date_Name':str(period_date[i].text),
             'Max_Temp\n[AM,PM,Night]':[str(weather_max_temp_value[j].text),str(weather_max_temp_value[j+1].text),str(weather_max_temp_value[j+2].text)],
@@ -76,15 +90,14 @@ def weather():
             'Rain\n[AM,PM,Night]':[str(rain_weather[j].text),str(rain_weather[j+1].text),str(rain_weather[j+2].text)],              
             'Chill\n[AM,PM,Night]':[str(weather_chill_val[j].text),str(weather_chill_val[j+1].text),str(weather_chill_val[j+2].text)],              
             'Humidity\n[AM,PM,Night]':[str(weather_humidity_val[j].text),str(weather_humidity_val[j+1].text),str(weather_humidity_val[j+2].text)],              
+            #'UV\n[AM,PM,Night]':[str(weather_UV_val[j].text),str(weather_UV_val[j+1].text),str(weather_UV_val[j+2].text)],              
             
             }
             df = df.append(a, ignore_index = True)
+        #print(df)
         response =make_response(df.to_csv())
         response.headers["Content-Disposition"] = "attachment; filename="+city_name + '.csv'
         return response
         
-        
-        
-
 if __name__ == "__main__":
     app.run(debug=True)
